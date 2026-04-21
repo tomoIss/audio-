@@ -27,7 +27,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.3; /* 動画を薄く表示 */
+            opacity: 0.3;
         }
         input[type="range"] {
             -webkit-appearance: none;
@@ -42,6 +42,12 @@
             background: #fff;
             border-radius: 50%;
             cursor: pointer;
+        }
+        /* Seekbar specific styling */
+        #seekbar-ctrl::-webkit-slider-thumb {
+            width: 12px;
+            height: 12px;
+            background: #60a5fa;
         }
     </style>
 </head>
@@ -62,7 +68,7 @@
                 <p class="text-[9px] uppercase tracking-[0.4em] text-white/60 font-bold">Inversion Color Synthesis</p>
             </div>
 
-            <div class="ui-glass p-6 rounded-3xl w-80 space-y-4">
+            <div class="ui-glass p-6 rounded-3xl w-80 space-y-4 border-l-4 border-blue-500/50">
                 <div class="flex flex-col gap-2">
                     <label class="text-[10px] font-bold text-gray-300 uppercase tracking-widest">Select Media</label>
                     <input type="file" id="file-input" accept="video/*" 
@@ -76,30 +82,40 @@
                 Ready to Sync
             </div>
             
-            <div class="ui-glass px-10 py-6 rounded-[3rem] flex items-center gap-12 shadow-2xl">
-                <div class="space-y-3">
-                    <div class="flex justify-between text-[9px] uppercase tracking-widest text-white/50 font-black">
-                        <span>Intensity</span>
-                        <span id="val-sens" class="text-white">4.0</span>
+            <div class="ui-glass px-10 py-6 rounded-[3rem] flex flex-col gap-4 shadow-2xl border-t border-white/5">
+                <!-- Top Row: Audio & Visual Controls -->
+                <div class="flex items-center gap-12">
+                    <div class="space-y-3">
+                        <div class="flex justify-between text-[9px] uppercase tracking-widest text-white/50 font-black">
+                            <span>Intensity</span>
+                            <span id="val-sens" class="text-white">4.0</span>
+                        </div>
+                        <input type="range" id="sens-ctrl" min="1.0" max="15.0" step="0.1" value="4.0" class="w-48">
                     </div>
-                    <input type="range" id="sens-ctrl" min="1.0" max="15.0" step="0.1" value="4.0" class="w-48">
+
+                    <div class="w-[1px] h-12 bg-white/10"></div>
+
+                    <div class="space-y-3">
+                        <div class="flex justify-between text-[9px] uppercase tracking-widest text-white/50 font-black">
+                            <span>Background Opacity</span>
+                            <span id="val-bg-op" class="text-white">0.3</span>
+                        </div>
+                        <input type="range" id="bg-op-ctrl" min="0" max="1" step="0.05" value="0.3" class="w-48">
+                    </div>
+
+                    <div class="w-[1px] h-12 bg-white/10"></div>
+
+                    <button id="play-btn" class="bg-white text-black text-[11px] font-black px-10 py-4 rounded-full hover:bg-gray-200 hover:scale-105 active:scale-95 transition-all disabled:opacity-10 shadow-lg shadow-white/5" disabled>
+                        START SESSION
+                    </button>
                 </div>
 
-                <div class="w-[1px] h-12 bg-white/10"></div>
-
-                <div class="space-y-3">
-                    <div class="flex justify-between text-[9px] uppercase tracking-widest text-white/50 font-black">
-                        <span>Background Opacity</span>
-                        <span id="val-bg-op" class="text-white">0.3</span>
-                    </div>
-                    <input type="range" id="bg-op-ctrl" min="0" max="1" step="0.05" value="0.3" class="w-48">
+                <!-- Bottom Row: Seekbar Control -->
+                <div class="w-full flex items-center gap-4 pt-2 border-t border-white/5">
+                    <span id="current-time" class="text-[10px] font-mono text-gray-400 w-10 text-right">0:00</span>
+                    <input type="range" id="seekbar-ctrl" min="0" max="100" step="0.1" value="0" class="flex-grow">
+                    <span id="duration-time" class="text-[10px] font-mono text-gray-400 w-10">0:00</span>
                 </div>
-
-                <div class="w-[1px] h-12 bg-white/10"></div>
-
-                <button id="play-btn" class="bg-white text-black text-[11px] font-black px-10 py-4 rounded-full hover:bg-gray-200 hover:scale-105 active:scale-95 transition-all disabled:opacity-10" disabled>
-                    START SESSION
-                </button>
             </div>
         </div>
     </div>
@@ -124,10 +140,21 @@
         const playBtn = document.getElementById('play-btn');
         const statusMsg = document.getElementById('status-msg');
         
+        // Seekbar elements
+        const seekbar = document.getElementById('seekbar-ctrl');
+        const currentTimeDisplay = document.getElementById('current-time');
+        const durationDisplay = document.getElementById('duration-time');
+        
         // Color extraction tools
         const colorCanvas = document.getElementById('color-thief-canvas');
         const colorCtx = colorCanvas.getContext('2d', { willReadFrequently: true });
         let complementColor = new THREE.Color(0x00ffff);
+
+        function formatTime(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+        }
 
         function initScene() {
             scene = new THREE.Scene();
@@ -191,7 +218,6 @@
             if (video.paused || video.ended || video.readyState < 2) return;
             
             try {
-                // Draw a small frame for performance
                 colorCtx.drawImage(video, 0, 0, 10, 10);
                 const data = colorCtx.getImageData(0, 0, 10, 10).data;
                 
@@ -206,11 +232,9 @@
                 g = (g / count) / 255;
                 b = (b / count) / 255;
 
-                // Calculate Complement (Opposite Color)
-                // Using a simple 1.0 - color approach
                 complementColor.setRGB(1.0 - r, 1.0 - g, 1.0 - b);
             } catch (error) {
-                // エラーでアニメーションループが止まるのを防ぐ
+                // Silent fail
             }
         }
 
@@ -236,6 +260,14 @@
                 video.src = url;
                 playBtn.disabled = false;
                 statusMsg.innerText = "STREAM SYNC READY";
+                
+                // Reset seekbar on new file load
+                video.onloadedmetadata = () => {
+                    seekbar.max = video.duration;
+                    durationDisplay.innerText = formatTime(video.duration);
+                    currentTimeDisplay.innerText = formatTime(0);
+                    seekbar.value = 0;
+                };
             }
         };
 
@@ -249,6 +281,19 @@
             } else {
                 video.pause();
                 statusMsg.innerText = "PAUSED";
+            }
+        };
+
+        // Seekbar interaction
+        seekbar.oninput = () => {
+            video.currentTime = seekbar.value;
+            currentTimeDisplay.innerText = formatTime(video.currentTime);
+        };
+
+        video.ontimeupdate = () => {
+            if (!video.paused) {
+                seekbar.value = video.currentTime;
+                currentTimeDisplay.innerText = formatTime(video.currentTime);
             }
         };
 
@@ -270,7 +315,7 @@
 
             if (isInitialized && !video.paused) {
                 analyser.getByteFrequencyData(dataArray);
-                extractColor(); // 動画から色を抽出
+                extractColor();
                 
                 const positions = geometry.attributes.position.array;
                 const colors = geometry.attributes.color.array;
@@ -295,7 +340,6 @@
                     positions[i3+1] = oy * displacement;
                     positions[i3+2] = oz * displacement;
 
-                    // Apply Complementary Color with intensity flash
                     colors[i3] = complementColor.r + (intensity * 0.3);
                     colors[i3+1] = complementColor.g + (intensity * 0.3);
                     colors[i3+2] = complementColor.b + (intensity * 0.3);
